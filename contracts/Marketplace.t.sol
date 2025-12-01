@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {IERC721Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
 import "./ERC20/SimpleERC20.sol";
 import "./ERC721/BaseNFT.sol";
@@ -63,7 +64,7 @@ contract MarketPlaceTest is Test {
         erc721Contract.setApprovalForAll(address(marketContract), true);
         marketContract.multipleAdd(address(erc721Contract), tokensIds, addressesToken, prices);
 
-        bytes32 key = keccak256(abi.encode(address(erc721Contract), 2));
+        bytes32 key = keccak256(abi.encode(address(erc721Contract), 3));
         bytes32 keyToKey = keccak256(abi.encode(tokensIds[0], key));
 
         bytes32 slot1 = vm.load(address(marketContract), keyToKey);
@@ -102,7 +103,6 @@ contract MarketPlaceTest is Test {
         marketContract.add(address(erc721Contract), tokensIds[0], addressesToken[0], prices[0]);
     }
     // multipleAdd
-
     function test_BadTokenAddress_multipleAdd() public {
         vm.expectRevert();
         marketContract.multipleAdd(address(erc20Contract), tokensIds, addressesToken, prices);
@@ -117,7 +117,7 @@ contract MarketPlaceTest is Test {
     function test_GoodTokenAddress_multipleAdd() public {
         _setOwnerApprovalAndAddTwoDefaultNft();
 
-        bytes32 key = keccak256(abi.encode(address(erc721Contract), 2));
+        bytes32 key = keccak256(abi.encode(address(erc721Contract), 3));
         bytes32 keyToKey = keccak256(abi.encode(tokensIds[0], key));
 
         bytes32 slot1 = vm.load(address(marketContract), keyToKey);
@@ -166,6 +166,7 @@ contract MarketPlaceTest is Test {
         (IERC20 payableTokenBefore,,uint256 priceBefore) = marketContract.getByAddressAndId(address(erc721Contract), tokensIds[0]);
         
         address newErc20 = address(new SimpleERC20("new20", "N20"));
+        vm.prank(owner);
         marketContract.change(address(erc721Contract), tokensIds[0], newErc20, prices[1]);
 
         (IERC20 payableTokenAfter,,uint256 priceAfter) = marketContract.getByAddressAndId(address(erc721Contract), tokensIds[0]);
@@ -176,7 +177,6 @@ contract MarketPlaceTest is Test {
 
     function test_NotOwnedToken_change() public {
         _setOwnerApprovalAndAddTwoDefaultNft();
-        vm.stopPrank();
 
         vm.startPrank(kate);
         address newErc20 = address(new SimpleERC20("new20", "N20"));
@@ -198,6 +198,7 @@ contract MarketPlaceTest is Test {
     function test_NotListedToken_change() public {
         _setOwnerApprovalAndAddTwoDefaultNft();
 
+        vm.prank(owner);
         marketContract.cancel(address(erc721Contract), tokensIds[0]);
 
         vm.expectRevert(bytes("token not listed or not dound"));
@@ -213,6 +214,8 @@ contract MarketPlaceTest is Test {
         address[] memory badPayableToken = new address[] (2);
         badPayableToken[0] = newErc20;
         badPayableToken[1] = newErc20;
+
+        vm.prank(owner);
         marketContract.multipleChange(address(erc721Contract), tokensIds, badPayableToken, prices);
 
         (IERC20 payableTokenAfter,,) = marketContract.getByAddressAndId(address(erc721Contract), tokensIds[0]);
@@ -242,6 +245,7 @@ contract MarketPlaceTest is Test {
     function test_NotListedToken_multipleChange() public {
         _setOwnerApprovalAndAddTwoDefaultNft();
 
+        vm.startPrank(owner);
         marketContract.cancel(address(erc721Contract), tokensIds[0]);
 
         vm.expectRevert(bytes("token not listed or not dound"));
@@ -251,6 +255,7 @@ contract MarketPlaceTest is Test {
     function test_Correct_cancel() public {
         _setOwnerApprovalAndAddTwoDefaultNft();
 
+        vm.prank(owner);
         marketContract.cancel(address(erc721Contract), tokensIds[0]);
 
         vm.expectRevert(bytes("token not listed or not dound"));
@@ -265,6 +270,7 @@ contract MarketPlaceTest is Test {
     function test_NotListedToken_cancel() public {
         _setOwnerApprovalAndAddTwoDefaultNft();
 
+        vm.prank(owner);
         marketContract.cancel(address(erc721Contract), tokensIds[0]);
 
         vm.expectRevert(bytes("token not listed or not dound"));
@@ -273,7 +279,6 @@ contract MarketPlaceTest is Test {
     // buy
     function test_correct_buy() public {
         _setOwnerApprovalAndAddTwoDefaultNft();
-        vm.stopPrank();
 
         vm.prank(address(marketContract));
         erc20Contract.mint(mix, 100 * 10 ** erc20Contract.decimals());
@@ -293,7 +298,6 @@ contract MarketPlaceTest is Test {
     //multiBuy
     function test_correct_multiBuy() public {
         _setOwnerApprovalAndAddTwoDefaultNft();
-        vm.stopPrank();
 
         vm.prank(address(marketContract));
         erc20Contract.mint(mix, 100 * 10 ** erc20Contract.decimals());
@@ -314,22 +318,123 @@ contract MarketPlaceTest is Test {
     }
     // setOffer
     function test_correct_offer() public {
+        uint offer = 100_000;
+        uint endTime = block.timestamp + 10;
+        _setOwnerApprovalAndAddTwoDefaultNft();
 
+        uint letgntBefore = marketContract.getOffers(address(erc721Contract), tokensIds[0]).length;
+
+        vm.prank(address(marketContract));
+        erc20Contract.mint(mix, 100 * 10 ** erc20Contract.decimals());
+        
+        vm.prank(mix);
+        marketContract.setOffer(address(erc721Contract), tokensIds[0], offer, endTime);
+
+        bytes32 key = keccak256(abi.encode(address(erc721Contract), 6));
+        bytes32 keytoKey = keccak256(abi.encode(tokensIds[0], key));
+
+        uint currentLength = uint(vm.load(address(marketContract), keytoKey));
+        
+        vm.assertEq(currentLength, letgntBefore + 1);// проверка добавления офера в массив
+        
+        bytes32 arrayStart = keccak256(abi.encode(keytoKey));
+
+        address from = address(uint160(uint256((vm.load(address(marketContract), arrayStart)))));
+        uint amount = uint256(vm.load(address(marketContract), bytes32(uint256(arrayStart) + 1)));
+        uint endOfferTime = uint256(vm.load(address(marketContract), bytes32(uint256(arrayStart) + 2)));
+
+        vm.assertEq(from, mix);
+        vm.assertEq(endOfferTime, endTime);
+        vm.assertEq(amount, offer);
+    }    
+
+    function test_Correct_receiveOffer() external {
+        _setOwnerApprovalAndAddTwoDefaultNft();
+
+        uint offer = 100_000;
+        uint endTime = block.timestamp + 10;
+        deal(address(erc20Contract), mix, 100 * 10 ** erc20Contract.decimals());
+        
+        vm.prank(mix);
+        marketContract.setOffer(address(erc721Contract), tokensIds[0], offer, endTime);
+
+        uint currentOfferId = marketContract.getOffers(address(erc721Contract), tokensIds[0]).length - 1;
+        uint offerWithFee = marketContract.calculatePersent(offer) + offer;
+
+        vm.prank(mix);
+        erc20Contract.approve(address(marketContract), offerWithFee);
+
+        vm.startPrank(owner);
+        marketContract.receiveOffer(address(erc721Contract), tokensIds[0], currentOfferId);
+        
+        address tokenOwner = erc721Contract.ownerOf(tokensIds[0]);
+        vm.assertEq(mix, tokenOwner);
     }
-    // receiveOffer
-    // getOffers
-    // setFeePersent 0, 10001, valid
-    // getFeeBPS notOwner
-    // setFeeReceiver 
-    // getReceiver
+    // setFeePersent
+    function test_Zero_setFeePersent() external {
+        vm.expectRevert(bytes("min % is 0,01"));
+        marketContract.setFeePersent(0);
+    }
+
+    function test_MoreMax_setFeePersent() external {
+        vm.expectRevert(bytes("max % is 100"));
+        marketContract.setFeePersent(10_001);
+    }
+
+    function test_Correct_setFeePersent() external {
+        uint fiveteenPersent = 5000;
+        marketContract.setFeePersent(fiveteenPersent);
+
+        uint newFeeBps = marketContract.getFeeBPS();
+        vm.assertEq(newFeeBps, fiveteenPersent); // 50%
+    }
+    // setFeeReceiver
+    function test_NotOwner_setFeeReceiver() external {
+        vm.prank(mix);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, mix));
+        marketContract.setFeeReceiver(mix);
+    }
+
+    function test_Correct_setFeeReceiver() external {
+        marketContract.setFeeReceiver(mix);
+
+        address currentReciever = marketContract.getReceiver();
+        vm.assertEq(currentReciever, mix);
+    }
+    // getFeeBPS
+    function test_NotOwner_getFeeBPS() external view {
+        uint defaultFeeBps = marketContract.getFeeBPS();
+        vm.assertEq(defaultFeeBps, 200); // 2%
+    }
+    // getReceiver 
+    function test_getReceiver() external view {
+        address currentReciever = marketContract.getReceiver();
+        vm.assertEq(currentReciever, receiver);
+    }
     // getAll
+    function test_getAll() external {
+        _setOwnerApprovalAndAddTwoDefaultNft();
+        address[] memory allNfths = marketContract.getAll();
+        vm.assertEq(allNfths[0], address(erc721Contract));
+    }
     // getTokensId
-    // calculatePersent 0, 1000000000000 notOwner
-    
+    function test_getTokensId() external {
+        _setOwnerApprovalAndAddTwoDefaultNft();
+        uint[] memory allTokensIds = marketContract.getTokensId(address(erc721Contract));
+        vm.assertEq(allTokensIds[0], tokensIds[0]);
+        vm.assertEq(allTokensIds[1], tokensIds[1]);
+    }
+    // calculatePersent
+    function test_Correct_calculatePersent() external view {
+        uint correctPrice = 100;
+        uint fee = marketContract.calculatePersent(correctPrice);
+        vm.assertEq(fee, 2);
+    }
     // support functions
     function _setOwnerApprovalAndAddTwoDefaultNft() internal {
         vm.startPrank(owner);
         erc721Contract.setApprovalForAll(address(marketContract), true);
         marketContract.multipleAdd(address(erc721Contract), tokensIds, addressesToken, prices);
+        vm.stopPrank();
     }
 }

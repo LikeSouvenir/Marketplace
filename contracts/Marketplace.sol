@@ -6,10 +6,11 @@ import "./ERC721/BaseNFT.sol";
 import "@openzeppelin/contracts/interfaces/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/utils/introspection/IERC165.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
 import "@openzeppelin/contracts/utils/math/Math.sol";
 
-contract Marketplace {
+contract Marketplace is Ownable{
     using Math for uint256;
 
     uint constant _FEE_DENUMENATOR_BPS = 10_000;
@@ -21,23 +22,18 @@ contract Marketplace {
         bool isListed;       //bytes1
         uint256 price;
     }
-    mapping(address NFT => mapping(uint tokenId => TokenPrice)) private _nftInfoMap;
-    mapping(address NFT => uint[]) private _nftAddressToTokenIdMap;
-    address[] private _allNFTs;
-
-    // modifier enoughAllowance(address user) {
-    //     _;
-    // }
-
     struct Offer {
         address from;
         uint endTime;
         uint amount;
     }
+    mapping(address NFT => mapping(uint tokenId => TokenPrice)) private _nftInfoMap;
+    mapping(address NFT => uint[]) private _nftAddressToTokenIdMap;
+    address[] private _allNFTs;
+
     mapping(address NFT => mapping(uint tokenId => Offer[])) _offers;
 
-
-    constructor(address feeReceiver) {
+    constructor(address feeReceiver) Ownable(msg.sender) {
         _feeReceiver = feeReceiver;
     }
 
@@ -86,10 +82,10 @@ contract Marketplace {
         TokenPrice storage tokenInfo = _nftInfoMap[addressNFT][tokenId];
 
         if (address(tokenInfo.payableToken) == address(0)) { // токен ранее не выставлялся
-            _nftAddressToTokenIdMap[addressNFT].push(tokenId);
-
             if (_nftAddressToTokenIdMap[addressNFT].length == 0)  // адрес контракта фигурирует в первый раз
                 _allNFTs.push(addressNFT);
+            _nftAddressToTokenIdMap[addressNFT].push(tokenId);
+
         }
 
         tokenInfo.payableToken = IERC20(addressToken);
@@ -170,7 +166,7 @@ contract Marketplace {
         return _offers[addressNFT][tokenId];
     }
 
-    function setFeePersent(uint feeBPS) external {// onlyOwner
+    function setFeePersent(uint feeBPS) external onlyOwner{
         require(feeBPS >= 1, "min % is 0,01");
         require(feeBPS <= _FEE_DENUMENATOR_BPS, "max % is 100");
         _feeBPS = feeBPS;
@@ -180,11 +176,11 @@ contract Marketplace {
         fee = price.mulDiv(_feeBPS, _FEE_DENUMENATOR_BPS);
     }
 
-    function getFeeBPS() external view returns(uint) {// onlyOwner
+    function getFeeBPS() external view returns(uint) { 
         return _feeBPS;
     }
 
-    function setFeeReceiver(address feeReceiver) external {// onlyOwner
+    function setFeeReceiver(address feeReceiver) external onlyOwner{ 
         _feeReceiver = feeReceiver;
     }
 
