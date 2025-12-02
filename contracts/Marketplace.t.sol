@@ -370,15 +370,77 @@ contract MarketPlaceTest is Test {
         address tokenOwner = erc721Contract.ownerOf(tokensIds[0]);
         vm.assertEq(mix, tokenOwner);
     }
+    // closeOffer
+    function test_Owner_closeOffer() external {
+        _setOwnerApprovalAndAddTwoDefaultNft();
+        uint offer = 100_000;
+        uint endTime = block.timestamp + 10;
+        
+        uint currentOfferId = marketContract.getOffers(address(erc721Contract), tokensIds[0]).length;
+
+        vm.startPrank(mix);
+        marketContract.setOffer(address(erc721Contract), tokensIds[0], offer, endTime);
+
+        Marketplace.Offer memory offersBeforeClosed = marketContract.getOffers(address(erc721Contract), tokensIds[0])[0];
+
+        marketContract.closeOffer(address(erc721Contract), tokensIds[0], currentOfferId);
+
+        Marketplace.Offer memory offersAfterClosed = marketContract.getOffers(address(erc721Contract), tokensIds[0])[0];
+
+        vm.assertNotEq(offersAfterClosed.from, offersBeforeClosed.from);
+    }
+    
+    function test_NotOwner_closeOffer() external {
+        _setOwnerApprovalAndAddTwoDefaultNft();
+        uint offer = 100_000;
+        uint endTime = block.timestamp + 10;
+        
+        vm.prank(mix);
+        marketContract.setOffer(address(erc721Contract), tokensIds[0], offer, endTime);
+
+        uint currentOfferId = marketContract.getOffers(address(erc721Contract), tokensIds[0]).length - 1;
+
+        vm.expectRevert(bytes("permission denied"));
+        marketContract.closeOffer(address(erc721Contract), tokensIds[0], currentOfferId);
+    }
+
+    function test_NotOwnerTimeExpired_closeOffer() external {
+        _setOwnerApprovalAndAddTwoDefaultNft();
+        uint offer = 100_000;
+        uint endTime = block.timestamp + 10;
+        
+        vm.prank(mix);
+        marketContract.setOffer(address(erc721Contract), tokensIds[0], offer, endTime);
+
+        uint currentOfferId = marketContract.getOffers(address(erc721Contract), tokensIds[0]).length - 1;
+        Marketplace.Offer memory offersBeforeClosed = marketContract.getOffers(address(erc721Contract), tokensIds[0])[currentOfferId];
+
+        vm.warp(17646703560);
+        vm.prank(vm.addr(100000));
+        marketContract.closeOffer(address(erc721Contract), tokensIds[0], currentOfferId);
+
+        Marketplace.Offer memory offersAfterClosed = marketContract.getOffers(address(erc721Contract), tokensIds[0])[currentOfferId];
+
+        vm.assertNotEq(offersBeforeClosed.from, offersAfterClosed.from);
+    }
+    
+    function test_NotOwnerTimeNotExpired_closeOffer() external {
+        _setOwnerApprovalAndAddTwoDefaultNft();
+        uint offer = 100_000;
+        uint endTime = block.timestamp + 10;
+        
+        vm.prank(mix);
+        marketContract.setOffer(address(erc721Contract), tokensIds[0], offer, endTime);
+
+        uint currentOfferId = marketContract.getOffers(address(erc721Contract), tokensIds[0]).length - 1;
+
+        vm.expectRevert(bytes("permission denied"));
+        marketContract.closeOffer(address(erc721Contract), tokensIds[0], currentOfferId);
+    }
     // setFeePersent
     function test_Zero_setFeePersent() external {
         vm.expectRevert(bytes("min % is 0,01"));
         marketContract.setFeePersent(0);
-    }
-
-    function test_MoreMax_setFeePersent() external {
-        vm.expectRevert(bytes("max % is 100"));
-        marketContract.setFeePersent(10_001);
     }
 
     function test_Correct_setFeePersent() external {

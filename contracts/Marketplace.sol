@@ -20,6 +20,7 @@ contract Marketplace is Ownable{
     struct TokenPrice {
         IERC20 payableToken; //bytes20
         bool isListed;       //bytes1
+        bool isOffered;
         uint256 price;
     }
     struct Offer {
@@ -33,11 +34,21 @@ contract Marketplace is Ownable{
 
     mapping(address NFT => mapping(uint tokenId => Offer[])) _offers;
 
+    event ItemListed(address indexed addressNFT, uint indexed tokenId, uint cost);
+    event ItemUpdated(address indexed addressNFT, uint indexed tokenId, address addressERC20, uint cost); 
+    event ItemSold(address indexed addressNFT, uint indexed tokenId, uint cost); 
+
+    event OfferCreated(address indexed addressNFT, uint indexed tokenId, address indexed from, uint endTime, uint amount); 
+    event OfferCanceled(address indexed addressNFT, uint indexed tokenId);
+
+    event UpdatePlatformFee(uint indexed fee); 
+    event UpdatePlatformFeeRecipient(address indexed recipient);
+
     constructor(address feeReceiver) Ownable(msg.sender) {
         _feeReceiver = feeReceiver;
     }
 
-    modifier supportERC165(address addressNFT) {
+    modifier supportIERC721(address addressNFT) {
         require(IERC165(addressNFT).supportsInterface(type(IERC721).interfaceId), "not support ERC165");
         _;
     }
@@ -50,13 +61,22 @@ contract Marketplace is Ownable{
         require(_nftInfoMap[addressNFT][tokenId].isListed, "token not listed or not dound");
         _;
     }
-
-    function _haveRules(IERC721 addressNFT, uint tokenId) internal view {
-        address tokenOwner = addressNFT.ownerOf(tokenId);
-        require(tokenOwner == msg.sender || addressNFT.isApprovedForAll(tokenOwner, msg.sender) || addressNFT.getApproved(tokenId) == msg.sender, "permission denied");
+    modifier notOffered(address addressNFT, uint tokenId) {
+        require(!_nftInfoMap[addressNFT][tokenId].isOffered, "token is offered");
+        _;
+    }
+    modifier isOffered(address addressNFT, uint tokenId) {
+        require(_nftInfoMap[addressNFT][tokenId].isOffered, "token not offered");
+        _;
     }
 
-    function add(address addressNFT, uint tokenId, address addressToken, uint price) external supportERC165(addressNFT) {
+    modifier haveRules(IERC721 addressNFT, uint tokenId) {
+        address tokenOwner = addressNFT.ownerOf(tokenId);
+        require(tokenOwner == msg.sender || addressNFT.isApprovedForAll(tokenOwner, msg.sender) || addressNFT.getApproved(tokenId) == msg.sender, "permission denied");
+        _;
+    }
+
+    function add(address addressNFT, uint tokenId, address addressToken, uint price) external supportIERC721(addressNFT) {
         IERC721 contractNFT = IERC721(addressNFT);
 
         require(
@@ -68,7 +88,7 @@ contract Marketplace is Ownable{
         _add(addressNFT, tokenId, addressToken, price);
     }
 
-    function multipleAdd(address addressNFT, uint[] calldata tokenIds, address[] calldata addressesToken, uint[] calldata prices) external supportERC165(addressNFT) {
+    function multipleAdd(address addressNFT, uint[] calldata tokenIds, address[] calldata addressesToken, uint[] calldata prices) external supportIERC721(addressNFT) {
         require(IERC721(addressNFT).isApprovedForAll(msg.sender, address(this)), "must set operator");
         
         for (uint i = 0; i < tokenIds.length; i++) {
@@ -76,21 +96,21 @@ contract Marketplace is Ownable{
         }
     }
 
-    function _add(address addressNFT, uint tokenId, address addressToken, uint price) internal notListed(addressNFT, tokenId) {
-        _haveRules(IERC721(addressNFT), tokenId);
-
+    function _add(address addressNFT, uint tokenId, address addressToken, uint price) internal notListed(addressNFT, tokenId) haveRules(IERC721(addressNFT), tokenId) {
         TokenPrice storage tokenInfo = _nftInfoMap[addressNFT][tokenId];
 
         if (address(tokenInfo.payableToken) == address(0)) { // токен ранее не выставлялся
             if (_nftAddressToTokenIdMap[addressNFT].length == 0)  // адрес контракта фигурирует в первый раз
                 _allNFTs.push(addressNFT);
             _nftAddressToTokenIdMap[addressNFT].push(tokenId);
-
         }
 
         tokenInfo.payableToken = IERC20(addressToken);
         tokenInfo.price = price;
         tokenInfo.isListed = true;
+        tokenInfo.isOffered = true;
+
+        emit ItemListed(addressNFT, tokenId, price);
     }
 
     function change(address addressNFT, uint tokenId, address addressToken, uint price) external  {
@@ -103,16 +123,15 @@ contract Marketplace is Ownable{
         }
     }
 
-    function _change(address addressNFT, uint tokenId, address addressToken, uint price) internal isListed(addressNFT, tokenId) {
-        _haveRules(IERC721(addressNFT), tokenId);
-
+    function _change(address addressNFT, uint tokenId, address addressToken, uint price) internal isListed(addressNFT, tokenId) haveRules(IERC721(addressNFT), tokenId) {
         TokenPrice storage tokenInfo = _nftInfoMap[addressNFT][tokenId];
         tokenInfo.payableToken = IERC20(addressToken);
         tokenInfo.price = price;
+        
+        emit ItemUpdated(addressNFT, tokenId, addressToken, price); 
     }
     
-    function cancel(address addressNFT, uint tokenId) external isListed(addressNFT, tokenId) {
-        _haveRules(IERC721(addressNFT), tokenId);
+    function cancel(address addressNFT, uint tokenId) external isListed(addressNFT, tokenId) haveRules(IERC721(addressNFT), tokenId) {
         _nftInfoMap[addressNFT][tokenId].isListed = false;
     }
 
@@ -126,14 +145,34 @@ contract Marketplace is Ownable{
         }
     }
 
-    function setOffer(address addressNFT, uint tokenId, uint offer, uint endTime) external isListed(addressNFT, tokenId) {
-        require(block.timestamp < endTime, "incorrect end time");
-        _offers[addressNFT][tokenId].push(Offer(msg.sender, offer, endTime));
+    function offOffers(address addressNFT, uint tokenId) external haveRules(IERC721(addressNFT), tokenId) isOffered(addressNFT, tokenId) {
+        _nftInfoMap[addressNFT][tokenId].isOffered = false;
     }
 
-    function receiveOffer(address addressNFT, uint tokenId, uint offerIdx) external{
-        _haveRules(IERC721(addressNFT), tokenId);
+    function onOffers(address addressNFT, uint tokenId) external haveRules(IERC721(addressNFT), tokenId) notOffered(addressNFT, tokenId) {
+        _nftInfoMap[addressNFT][tokenId].isOffered = true;
+    }
 
+    function setOffer(address addressNFT, uint tokenId, uint offer, uint endTime) external isListed(addressNFT, tokenId) isOffered(addressNFT, tokenId) {
+        require(block.timestamp < endTime, "incorrect end time");
+        _offers[addressNFT][tokenId].push(Offer(msg.sender, offer, endTime));
+        
+        emit OfferCreated(addressNFT, tokenId, msg.sender, endTime, offer); 
+    }
+
+    function closeOffer(address addressNFT, uint tokenId, uint offerIdx) external {
+        Offer storage offer = _offers[addressNFT][tokenId][offerIdx];
+
+        if (offer.endTime < block.timestamp || offer.from == msg.sender) {
+            delete _offers[addressNFT][tokenId][offerIdx];
+        } else {
+            revert("permission denied");
+        }
+        
+        emit OfferCanceled(addressNFT, tokenId);
+    }
+
+    function receiveOffer(address addressNFT, uint tokenId, uint offerIdx) external haveRules(IERC721(addressNFT), tokenId) {
         Offer storage offer = _offers[addressNFT][tokenId][offerIdx];
 
         require(offer.endTime >= block.timestamp, "offer is closed");
@@ -141,6 +180,8 @@ contract Marketplace is Ownable{
         _send(addressNFT, tokenId, offer.amount, offer.from);
 
         delete _offers[addressNFT][tokenId][offerIdx];
+        
+        emit OfferCanceled(addressNFT, tokenId);
     }
 
     function _send(address addressNFT, uint tokenId, uint price, address to) internal isListed(addressNFT, tokenId) {
@@ -160,6 +201,9 @@ contract Marketplace is Ownable{
         IERC721(addressNFT).safeTransferFrom(tokenOwner, to, tokenId);
         
         tokenInfo.isListed = false;
+        tokenInfo.isOffered = false;
+
+        emit ItemSold(addressNFT, tokenId, price); 
     }
 
     function getOffers(address addressNFT, uint tokenId) external view returns(Offer[] memory) {
@@ -168,8 +212,9 @@ contract Marketplace is Ownable{
 
     function setFeePersent(uint feeBPS) external onlyOwner{
         require(feeBPS >= 1, "min % is 0,01");
-        require(feeBPS <= _FEE_DENUMENATOR_BPS, "max % is 100");
         _feeBPS = feeBPS;
+        
+        emit UpdatePlatformFee(feeBPS); 
     }
 
     function calculatePersent(uint price) public view returns(uint fee) {
@@ -182,6 +227,8 @@ contract Marketplace is Ownable{
 
     function setFeeReceiver(address feeReceiver) external onlyOwner{ 
         _feeReceiver = feeReceiver;
+        
+        emit UpdatePlatformFeeRecipient(feeReceiver);
     }
 
     function getReceiver() external view returns(address) {
@@ -196,9 +243,9 @@ contract Marketplace is Ownable{
         nfts = _nftAddressToTokenIdMap[addressNFT];
     }
 
-    function getByAddressAndId(
+    function getByAddressAndId (
         address addressNFT, uint tokenId
-    )external view isListed(addressNFT, tokenId) returns(IERC20 payableToken, bool checkListed, uint256 price) {
+    ) external view isListed(addressNFT, tokenId) returns(IERC20 payableToken, bool checkListed, uint256 price) {
         TokenPrice storage tokenInfo = _nftInfoMap[addressNFT][tokenId];
         return (tokenInfo.payableToken, tokenInfo.isListed, tokenInfo.price);
     }
