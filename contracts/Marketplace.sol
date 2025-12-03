@@ -3,7 +3,6 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/interfaces/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-// import "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
@@ -44,7 +43,7 @@ contract Marketplace is Ownable, ReentrancyGuard{
     }
 
     modifier supportIERC721(address addressNFT) {
-        require(IERC165(addressNFT).supportsInterface(type(IERC721).interfaceId), "not support ERC165");
+        require(IERC165(addressNFT).supportsInterface(type(IERC721).interfaceId), "not support ERC721");
         _;
     }
 
@@ -80,12 +79,10 @@ contract Marketplace is Ownable, ReentrancyGuard{
         _;
     }
 
-    function add(address addressNFT, uint tokenId, address addressToken, uint price) external supportIERC721(addressNFT) {
-        _add(addressNFT, tokenId, addressToken, price);
-    }
-
-    function _add(address addressNFT, uint tokenId, address addressToken, uint price) internal notListed(addressNFT, tokenId) haveRules(addressNFT, tokenId) notZeroAddress(addressToken) {
+    function add(address addressNFT, uint tokenId, address addressToken, uint price) public supportIERC721(addressNFT) notListed(addressNFT, tokenId) haveRules(addressNFT, tokenId) notZeroAddress(addressToken) {
         require(price > 0, "must be > 0");
+        require(IERC721(addressNFT).isApprovedForAll(msg.sender, address(this)) || IERC721(addressNFT).getApproved(tokenId) == address(this), "must set operator or approval");
+        
         TokenPrice storage tokenInfo = _nftInfoMap[addressNFT][tokenId];
 
         tokenInfo.payableToken = IERC20(addressToken);

@@ -29,7 +29,6 @@ contract MarketPlaceTest is Test {
     SimpleERC20 erc20Contract;
     BaseNFT erc721Contract;
 
-    // multipleAdd
     uint[] tokensIds;
     address[] addressesToken;
     uint[] prices;
@@ -42,7 +41,6 @@ contract MarketPlaceTest is Test {
         erc721Contract.safeMint(owner, "QmX553Mn6xpx1H8brBNPV6qcR2UBcFrC8LUYsVmctWk8xZ"); // tokenId = 1
         // erc721Contract.safeMint(kate, "QmSiK3Pg4tfYGKdHb4VjAm3NUDxTrtoCFfjRTLvfu8k5wn");  // tokenId = 2
 
-        // multiple
         tokensIds = [0,1];
         addressesToken = [address(erc20Contract), address(erc20Contract)];
         prices = [99_000, 192_000];
@@ -54,7 +52,7 @@ contract MarketPlaceTest is Test {
     }
 
     function test_NotHaveApproval_add() public {
-        // vm.expectRevert(bytes("must set approval or operator"));
+        vm.expectRevert(bytes("must set operator or approval"));
         vm.prank(owner);
         marketContract.add(address(erc721Contract), tokensIds[0], addressesToken[0], prices[0]);
     }

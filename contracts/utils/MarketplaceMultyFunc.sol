@@ -14,11 +14,11 @@ import "../Marketplace.sol";
 contract MarketplaceMultyFunc is Marketplace{
     constructor(address feeReceiver) Marketplace(feeReceiver) {}
 
-    function multipleAdd(address addressNFT, uint[] calldata tokenIds, address[] calldata addressesToken, uint[] calldata prices) external supportIERC721(addressNFT) {
+    function multipleAdd(address addressNFT, uint[] calldata tokenIds, address[] calldata addressesToken, uint[] calldata prices) external {
         require(IERC721(addressNFT).isApprovedForAll(msg.sender, address(this)), "must set operator");
         
         for (uint i = 0; i < tokenIds.length; i++) {
-            _add(addressNFT, tokenIds[i], addressesToken[i], prices[i]);
+            add(addressNFT, tokenIds[i], addressesToken[i], prices[i]);
         }
     }
 
