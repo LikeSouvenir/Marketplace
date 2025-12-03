@@ -1,49 +1,62 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+/// @title Simple ERC-20
+/// @author GitHub.com/LikeSouvenir
+/// @dev Interface of the ERC-20 standard with increaseAllowance, decreaseAllowance and burnFrom
 contract SimpleERC20 {
-    uint8 constant _decimals = 18;               
-    string _name;                                   //0
-    string _symbol;                                 //1
-    uint _totalSupply;                              //3
-    mapping (address => uint) _balances;            //4
+    uint8 constant _decimals = 18;            
+    string _name;                                   
+    string _symbol;                               
+    uint _totalSupply;                         
+
+    mapping (address => uint) _balances;       
     mapping(address owner => mapping(address spender => uint value)) _allowances;
-    address immutable contractOwner;
+
+    address immutable _owner;
 
     event Transfer(address indexed from, address indexed to, uint value);
     event Approval(address indexed from, address indexed to, uint value);
 
+    /// @dev Throws if called by any account other than the owner.
     modifier onlyOwner() {
-        require(msg.sender == contractOwner, "only Owner");
+        require(msg.sender == _owner, "only Owner");
         _;
     }
 
+    /// @dev Sets the values for {name} and {symbol}. Make owner to msg.sender
     constructor(string memory name_, string memory symbol_) {
-        contractOwner = msg.sender;
+        _owner = msg.sender;
         _name = name_;
         _symbol = symbol_;
     }
 
+    /// @dev Returns the decimals places of the token.
     function decimals() external virtual view returns(uint8) {
         return _decimals;
     }
 
+    /// @dev Returns the symbol of the token.
     function name() external virtual view returns(string memory) {
         return _name;
     }
 
+    /// @dev Returns the name of the token.
     function symbol() external virtual view returns(string memory) {
         return _symbol;
     }
 
+    /// @dev Returns the total amount of tokens in existence.
     function totalSupply() external virtual view returns(uint) {
         return _totalSupply;
     }
 
+    /// @dev Returns the amount of tokens owned by `account`.
     function balanceOf(address account) external virtual view returns(uint) {
         return _balances[account];
     }
 
+    /// @dev Moves `value` amount of tokens from the caller's account to `to`.
     function transfer(address to, uint value) external virtual returns(bool) {
         _transfer(msg.sender, to, value);
         emit Transfer(msg.sender, to, value);
@@ -51,6 +64,7 @@ contract SimpleERC20 {
         return true;
     }
 
+    /// @dev Moves `value` amount of tokens from `from` to `to` using the allowance mechanism.
     function transferFrom(address from, address to, uint value) external virtual returns(bool) {
         uint currentValue = _allowances[from][msg.sender];
         require(currentValue >= value, "not enough allowance");
@@ -67,17 +81,20 @@ contract SimpleERC20 {
         _update(from, to, value);
     }
 
+    /// @dev Returns the remaining number of tokens that `spender` will be allowed to spend on behalf of `owner`
     function allowance(address owner, address spender) external virtual view returns(uint amount) {
         return _allowances[owner][spender];
     }
 
+    /// @dev Increases the allowance of `spender` by `value`.
     function increaseAllowance(address spender, uint value) external virtual returns(bool){
         uint currentValue = _allowances[msg.sender][spender]; 
 
         _approve(msg.sender, spender, currentValue + value);
         return true;
     }
-
+    
+    /// @dev Decreases the allowance of `spender` by `value`.
     function decreaseAllowance(address spender, uint value) external virtual returns(bool){
         uint currentValue = _allowances[msg.sender][spender];
         require(currentValue >= value, "incorrect value");
@@ -86,6 +103,7 @@ contract SimpleERC20 {
         return true;
     }
 
+    /// @dev Sets `value` as the allowance of `spender` over the caller's tokens.
     function approve(address spender, uint value) external virtual returns(bool){
         _approve(msg.sender, spender, value);
         return true;
@@ -106,15 +124,18 @@ contract SimpleERC20 {
         }
     }
 
+    /// @dev Mints `value` amount of tokens to `to`. Only callable by owner.
     function mint(address to, uint value) public virtual onlyOwner{
         _update(address(0), to, value);
     }
 
+    /// @dev Destroys `value` amount of tokens from the caller's account.
     function burn(uint value) external virtual returns(bool){
         _burn(msg.sender, value);
         return true;
     }
 
+    /// @dev Destroys `value` amount of tokens from `from` using allowance.
     function burnFrom(address from, uint value) external virtual returns(bool){
         uint currentValue = _allowances[from][msg.sender];
         require(currentValue >= value, "not enough allowance");

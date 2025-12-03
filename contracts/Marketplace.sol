@@ -8,6 +8,12 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 import "@openzeppelin/contracts/utils/math/Math.sol";
 
+/// @title NFT Marketplace with ERC20/ERC721 Support
+/// @author GitHub.com/LikeSouvenir
+/// @notice A decentralized marketplace for buying, selling, and making offers on NFTs.
+/// @notice Supports listing NFTs for sale, accepting offers, and collecting platform fees.
+/// @notice Uses ReentrancyGuard for security and supports both ERC20 and ERC721 standards.
+/// @notice Platform fee is configurable and sent to a specified recipient.
 contract Marketplace is Ownable, ReentrancyGuard{
     using Math for uint256;
 
@@ -78,7 +84,12 @@ contract Marketplace is Ownable, ReentrancyGuard{
         require(tokenOwner == msg.sender || nft.isApprovedForAll(tokenOwner, msg.sender) || nft.getApproved(tokenId) == msg.sender, "must use approval or operator, or be owner");
         _;
     }
-
+    /// @notice Adds a new NFT to the marketplace for sale
+    /// @dev Requires approval for the marketplace to transfer the NFT. Emit ItemListed event
+    /// @param addressNFT Address of the NFT contract
+    /// @param tokenId ID of the NFT to list
+    /// @param addressToken Address of the ERC20 token to accept as payment
+    /// @param price Price of the NFT in the specified ERC20 token
     function add(address addressNFT, uint tokenId, address addressToken, uint price) public supportIERC721(addressNFT) notListed(addressNFT, tokenId) haveRules(addressNFT, tokenId) notZeroAddress(addressToken) {
         require(price > 0, "must be > 0");
         require(IERC721(addressNFT).isApprovedForAll(msg.sender, address(this)) || IERC721(addressNFT).getApproved(tokenId) == address(this), "must set operator or approval");
@@ -93,6 +104,12 @@ contract Marketplace is Ownable, ReentrancyGuard{
         emit ItemListed(addressNFT, tokenId, true);
     }
 
+    /// @notice Updates the price and payment token for a listed NFT
+    /// @dev Only callable by the NFT owner or approved operator. Emit ItemUpdated event
+    /// @param addressNFT Address of the NFT contract
+    /// @param tokenId ID of the NFT to update
+    /// @param addressToken Address of the new ERC20 token to accept as payment
+    /// @param price New price of the NFT
     function change(address addressNFT, uint tokenId, address addressToken, uint price) external  {
         _change(addressNFT, tokenId, addressToken, price);
     }
@@ -107,24 +124,46 @@ contract Marketplace is Ownable, ReentrancyGuard{
         emit ItemUpdated(addressNFT, tokenId, addressToken, price); 
     }
     
+    /// @notice Cancels the listing of an NFT
+    /// @dev Only callable by the NFT owner or approved operator. Emit ItemListed event
+    /// @param addressNFT Address of the NFT contract
+    /// @param tokenId ID of the NFT to cancel
     function cancel(address addressNFT, uint tokenId) external isListed(addressNFT, tokenId) haveRules(addressNFT, tokenId) {
         _nftInfoMap[addressNFT][tokenId].isListed = false;
 
         emit ItemListed(addressNFT, tokenId, false);
     }
 
+    /// @notice Buys a listed NFT at its current price
+    /// @dev Transfers the NFT to the buyer and pays the seller, minus platform fee. Emit ItemSold event
+    /// @param addressNFT Address of the NFT contract
+    /// @param tokenId ID of the NFT to buy
     function buy(address addressNFT, uint tokenId) external {
         _send(addressNFT, tokenId, 0, address(0));
     }
 
+    /// @notice Disables offers for a listed NFT
+    /// @dev Only callable by the NFT owner or approved operator
+    /// @param addressNFT Address of the NFT contract
+    /// @param tokenId ID of the NFT
     function offOffers(address addressNFT, uint tokenId) external haveRules(addressNFT, tokenId) isOffered(addressNFT, tokenId) {
         _nftInfoMap[addressNFT][tokenId].isOffered = false;
     }
 
+    /// @notice Enables offers for a listed NFT
+    /// @dev Only callable by the NFT owner or approved operator
+    /// @param addressNFT Address of the NFT contract
+    /// @param tokenId ID of the NFT
     function onOffers(address addressNFT, uint tokenId) external haveRules(addressNFT, tokenId) notOffered(addressNFT, tokenId) {
         _nftInfoMap[addressNFT][tokenId].isOffered = true;
     }
 
+    /// @notice Places an offer on a listed NFT
+    /// @dev Offer is valid until endTime. Emit OfferCreated event
+    /// @param addressNFT Address of the NFT contract
+    /// @param tokenId ID of the NFT
+    /// @param offer Amount of the offer in the NFT's payment token
+    /// @param endTime Timestamp when the offer expires
     function setOffer(address addressNFT, uint tokenId, uint offer, uint endTime) external isListed(addressNFT, tokenId) isOffered(addressNFT, tokenId) {
         require(block.timestamp < endTime, "incorrect end time");
         require(offer > 0, "offer must be > 0");
@@ -133,6 +172,11 @@ contract Marketplace is Ownable, ReentrancyGuard{
         emit OfferCreated(addressNFT, tokenId, msg.sender, endTime, offer); 
     }
 
+    /// @notice Cancels an existing offer on an NFT
+    /// @dev Can be called by the offerer or after the offer expires. Emit OfferCanceled event
+    /// @param addressNFT Address of the NFT contract
+    /// @param tokenId ID of the NFT
+    /// @param from Address of the offerer
     function closeOffer(address addressNFT, uint tokenId, address from) external {
         uint endTime = _offers[addressNFT][tokenId][from].endTime;
 
@@ -145,6 +189,11 @@ contract Marketplace is Ownable, ReentrancyGuard{
         emit OfferCanceled(addressNFT, tokenId, from);
     }
 
+    /// @notice Accepts an offer on a listed NFT
+    /// @dev Transfers the NFT to the offerer and pays the seller, minus platform fee. Emit ItemSold and OfferCanceled event
+    /// @param addressNFT Address of the NFT contract
+    /// @param tokenId ID of the NFT
+    /// @param from Address of the offerer
     function receiveOffer(address addressNFT, uint tokenId, address from) external haveRules(addressNFT, tokenId) {
         Offer storage offer = _offers[addressNFT][tokenId][from];
 
@@ -179,10 +228,19 @@ contract Marketplace is Ownable, ReentrancyGuard{
         emit ItemSold(addressNFT, tokenId, price); 
     }
 
+    /// @notice Returns the offer details for a specific NFT and offerer
+    /// @dev Returns zero values if no offer exists
+    /// @param addressNFT Address of the NFT contract
+    /// @param tokenId ID of the NFT
+    /// @param from Address of the offerer
+    /// @return Offer details (endTime, amount)
     function getOffers(address addressNFT, uint tokenId, address from) external view returns(Offer memory) {
         return _offers[addressNFT][tokenId][from];
     }
 
+    /// @notice Sets the platform fee percentage (in basis points)
+    /// @dev Only callable by the contract owner. Emit UpdatePlatformFee event
+    /// @param feeBPS New fee percentage in basis points (e.g., 200 = 2%)
     function setFeePersent(uint feeBPS) external onlyOwner{
         require(feeBPS >= 1, "min % is 0,01");
         _feeBPS = feeBPS;
@@ -190,24 +248,43 @@ contract Marketplace is Ownable, ReentrancyGuard{
         emit UpdatePlatformFee(feeBPS); 
     }
 
+    /// @notice Calculates the platform fee for a given price.
+    /// @dev Uses the current fee percentage
+    /// @param price Price to calculate fee for
+    /// @return fee amount
     function calculatePersent(uint price) public view returns(uint fee) {
         fee = price.mulDiv(_feeBPS, _FEE_DENUMENATOR_BPS);
     }
 
+    /// @notice Returns the current platform fee percentage
+    /// @dev In basis points (e.g., 200 = 2%)
+    /// @return Current fee percentage
     function getFeeBPS() external view returns(uint) { 
         return _feeBPS;
     }
 
+    /// @notice Sets the address to receive platform fees
+    /// @dev Only callable by the contract owner. Emit UpdatePlatformFeeRecipient event
+    /// @param feeReceiver Address to receive fees
     function setFeeReceiver(address feeReceiver) external  notZeroAddress(feeReceiver) onlyOwner{ 
         _feeReceiver = feeReceiver;
         
         emit UpdatePlatformFeeRecipient(feeReceiver);
     }
 
+    /// @notice Returns the current fee recipient address
+    /// @dev Address where platform fees are sent
+    /// @return Current fee recipient
     function getReceiver() external view returns(address) {
         return _feeReceiver;
     }
 
+    /// @notice Returns the payment token and price for a listed NFT
+    /// @dev Reverts if the NFT is not listed
+    /// @param addressNFT Address of the NFT contract
+    /// @param tokenId ID of the NFT
+    /// @return payableToken Payment token contract
+    /// @return price Payment token contract, price
     function getByAddressAndId (
         address addressNFT, uint tokenId
     ) external view isListed(addressNFT, tokenId) returns(IERC20 payableToken, uint256 price) {
