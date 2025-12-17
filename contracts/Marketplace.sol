@@ -11,9 +11,9 @@ import "@openzeppelin/contracts/utils/math/Math.sol";
 /// @title NFT Marketplace with ERC20/ERC721 Support
 /// @author GitHub.com/LikeSouvenir
 /// @notice A decentralized marketplace for buying, selling, and making offers on NFTs.
-/// @notice Supports listing NFTs for sale, accepting offers, and collecting platform fees.
-/// @notice Uses ReentrancyGuard for security and supports both ERC20 and ERC721 standards.
-/// @notice Platform fee is configurable and sent to a specified recipient.
+/// Supports listing NFTs for sale, accepting offers, and collecting platform fees.
+/// Uses ReentrancyGuard for security and supports both ERC20 and ERC721 standards.
+/// Platform fee is configurable and sent to a specified recipient.
 contract Marketplace is Ownable, ReentrancyGuard{
     using Math for uint256;
 

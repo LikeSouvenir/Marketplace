@@ -60,7 +60,7 @@ contract SimpleERC20Test is Test {
     }
 
     function test_approveWithSlot() public {
-        uint slot = uint256(keccak256(abi.encode(account2, uint256(4))));
+        bytes32 slot = keccak256(abi.encode(account2, uint256(4)));
         bytes32 key = keccak256(abi.encode(account3, slot));
         vm.store(address(simpleERC20), key, bytes32(value));
         assertEq(simpleERC20.allowance(account2, account3), value);
@@ -119,6 +119,17 @@ contract SimpleERC20Test is Test {
         vm.expectEmit(true,true,false, true);
         emit Transfer(account2, account3, value);
         test_transfer();
+    }
+
+    function test_transfer_fuzz(address from, address to, uint256 amount) public {
+        vm.assume(from != address(0) && to != address(0));
+        vm.assume(from != to);
+        
+        simpleERC20.mint(from, amount);
+        vm.prank(from);
+        simpleERC20.transfer(to, amount);
+        
+        assertEq(simpleERC20.balanceOf(to), amount);
     }
 
     function test_mint()public {
